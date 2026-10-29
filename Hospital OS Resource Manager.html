@@ -1,0 +1,183 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Hospital OS Resource Manager</title>
+<style>
+:root{--bg:#f3f6f6;--card:#fff;--tx:#14232b;--mu:#55666f;--bd:#d6e0e2;--ac:#0a7d78;--ac2:#e0f2f1;--ok:#1a7f4b;--bad:#c0392b;--r:6px;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1719;--card:#162226;--tx:#e4eeee;--mu:#93a8ab;--bd:#294045;--ac:#3fc7bf;--ac2:#12342f;--ok:#4cc38a;--bad:#ff7b6b}}
+:root[data-theme="dark"]{--bg:#0f1719;--card:#162226;--tx:#e4eeee;--mu:#93a8ab;--bd:#294045;--ac:#3fc7bf;--ac2:#12342f;--ok:#4cc38a;--bad:#ff7b6b}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 48px}
+h1{font:700 26px/1.2 Georgia,"Times New Roman",serif;margin:0 0 4px}
+h2{font:600 18px/1.3 Georgia,serif;margin:0 0 8px}
+p.s{color:var(--mu);margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:14px}
+.tabs{display:flex;gap:4px;overflow-x:auto;border-bottom:2px solid var(--bd);margin-bottom:14px}
+.tabs button{background:none;border:0;padding:10px 14px;font:inherit;color:var(--mu);cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button.on{color:var(--ac);border-color:var(--ac);font-weight:600}
+button,select,input{font:inherit;color:var(--tx)}
+.b{background:var(--ac);color:#fff;border:0;border-radius:var(--r);padding:7px 12px;cursor:pointer}
+.b.g{background:var(--ac2);color:var(--ac)}
+.b:focus-visible,select:focus-visible,input:focus-visible,.tabs button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
+select,input{background:var(--card);border:1px solid var(--bd);border-radius:var(--r);padding:6px 8px}
+input[type=number]{width:60px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border-bottom:1px solid var(--bd);padding:6px 8px;text-align:left;white-space:nowrap}
+th{color:var(--mu);font-weight:600}
+.gantt{display:flex;border-radius:var(--r);overflow:hidden;min-height:44px;margin-top:6px}
+.seg{color:#fff;display:flex;flex-direction:column;justify-content:center;align-items:center;font-weight:600;border-right:1px solid rgba(255,255,255,.5);font-size:13px;min-width:0;overflow:hidden}
+.seg small{font-weight:400;opacity:.85;font-size:10px}
+.end{text-align:right;color:var(--mu);font-size:11px}
+.pill{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;color:#fff}
+.slots{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.slot{width:78px;height:44px;border:2px dashed var(--bd);border-radius:var(--r);display:flex;align-items:center;justify-content:center;font-size:12px;text-align:center}
+.slot.f{border:2px solid var(--ac);background:var(--ac2)}
+.log{font:12px/1.6 ui-monospace,Consolas,monospace;color:var(--mu);max-height:150px;overflow:auto}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.hit{color:var(--ok)}.flt{color:var(--bad);font-weight:700}
+.msg{padding:8px 10px;border-radius:var(--r);background:var(--ac2);margin:8px 0}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+</style></head><body><main>
+<h1>Hospital OS Resource Manager</h1>
+<p class="s">Operating Systems, Assignment 3 · Problem 1: emergency care. Pratham Tiwari and Sankalp Jadhav. Edit the shared process table; every module updates.</p>
+<div class="card sc"><h2>Shared process table</h2><table id="pt"></table></div>
+<div class="tabs" id="tabs"></div>
+<div id="view"></div>
+</main>
+<script>
+const $=s=>document.querySelector(s),C=['#2e7d9a','#c0392b','#8e44ad','#1e8449','#b9770e'];
+const NM=['Pharmacy request','Emergency admission','Medical imaging (CT/MRI)','Lab report processing','Patient registration'];
+const P0=[[0,5,4],[1,3,1],[2,6,2],[3,4,3],[4,2,5]];
+let P=P0.map((a,i)=>({id:i,name:NM[i],at:a[0],bt:a[1],pr:a[2]}));
+let tab='cpu',alg='pri',aging=false,Q=2;
+const pill=i=>`<span class="pill" style="background:${C[i]}">P${i}</span>`;
+/* ---------- process table ---------- */
+function drawPT(){$('#pt').innerHTML='<tr><th>ID</th><th>Task</th><th>Arrival</th><th>Burst</th><th>Priority (1 = highest)</th></tr>'+P.map(p=>`<tr><td>${pill(p.id)}</td><td>${p.name}</td>`+['at','bt','pr'].map(k=>`<td><input type="number" min="${k=='at'?0:1}" max="20" value="${p[k]}" aria-label="${k} P${p.id}" onchange="P[${p.id}].${k}=Math.max(${k=='at'?0:1},+this.value||0);render()"></td>`).join('')+'</tr>').join('')}
+/* ---------- CPU scheduling ---------- */
+function sim(a,ag,q){
+ const n=P.length,rem=P.map(p=>p.bt),fin=Array(n).fill(0),tl=[];let t=0,done=0,cur=-1,qq=[],ql=0;
+ const arr=()=>P.forEach(p=>{if(p.at===t)qq.push(p.id)});
+ if(a==='rr')arr();
+ while(done<n&&t<400){
+  if(a==='rr'){if(cur<0){if(qq.length){cur=qq.shift();ql=q}else{tl.push(-1);t++;arr();continue}}}
+  else{
+   const rd=P.filter(p=>p.at<=t&&rem[p.id]>0);
+   if(!rd.length){tl.push(-1);t++;continue}
+   if(a==='pri'||cur<0){
+    const key=p=>a==='fcfs'?[p.at,p.id]:a==='sjf'?[p.bt,p.at]:[p.pr-(ag?Math.floor((t-p.at-(p.bt-rem[p.id]))/4):0),p.at];
+    cur=rd.slice().sort((x,y)=>{const u=key(x),v=key(y);return u[0]-v[0]||u[1]-v[1]})[0].id}
+  }
+  tl.push(cur);rem[cur]--;t++;
+  if(a==='rr'){ql--;arr()}
+  if(rem[cur]===0){fin[cur]=t;done++;cur=-1}else if(a==='rr'&&ql===0){qq.push(cur);cur=-1}
+ }
+ const res=P.map(p=>{const ta=fin[p.id]-p.at;return{fin:fin[p.id],ta,wt:ta-p.bt}});
+ const av=k=>(res.reduce((s,r)=>s+r[k],0)/n).toFixed(1);
+ return{tl,res,aw:av('wt'),at:av('ta')}
+}
+function gantt(tl){let h='<div class="gantt">',i=0;while(i<tl.length){let j=i;while(j<tl.length&&tl[j]===tl[i])j++;const d=tl[i];h+=`<div class="seg" style="flex:${j-i};background:${d<0?'var(--bd)':C[d]}">${d<0?'idle':'P'+d}<small>${i}</small></div>`;i=j}return h+`</div><div class="end">finish at ${tl.length}</div>`}
+const AN={pri:'Priority (preemptive)',fcfs:'FCFS',sjf:'SJF (non-preemptive)',rr:'Round Robin'};
+function cpu(){
+ const s=sim(alg,aging,Q);
+ const cmp=Object.keys(AN).map(k=>{const r=sim(k,k=='pri'?false:aging&&false,Q);return`<tr><td>${AN[k]}</td><td>${r.aw}</td><td>${r.at}</td><td class="${r.res[1].wt?'bad':'ok'}">${r.res[1].wt}</td></tr>`}).join('');
+ return`<div class="card"><h2>CPU scheduling</h2><p class="s">Emergency work preempts routine work. Aging adds 1 priority level for every 4 time units a task waits, so registration never starves.</p>
+ <div class="row"><select id="al" aria-label="Algorithm">${Object.keys(AN).map(k=>`<option value="${k}" ${k==alg?'selected':''}>${AN[k]}</option>`).join('')}</select>
+ <label><input type="checkbox" id="ag" ${aging?'checked':''}> Aging (priority only)</label>
+ <label>Quantum <input type="number" id="qn" min="1" max="6" value="${Q}"></label></div>
+ ${gantt(s.tl)}
+ <div class="sc"><table style="margin-top:10px"><tr><th>Process</th><th>Finish</th><th>Turnaround</th><th>Waiting</th></tr>${P.map(p=>`<tr><td>${pill(p.id)} ${p.name}</td><td>${s.res[p.id].fin}</td><td>${s.res[p.id].ta}</td><td>${s.res[p.id].wt}</td></tr>`).join('')}
+ <tr><th>Average</th><th></th><th>${s.at}</th><th>${s.aw}</th></tr></table></div></div>
+ <div class="card sc"><h2>Algorithm comparison</h2><p class="s">Priority is shown with aging off, Round Robin uses the quantum above.</p><table><tr><th>Algorithm</th><th>Avg waiting</th><th>Avg turnaround</th><th>P1 (emergency) waiting</th></tr>${cmp}</table>
+ <div class="msg">SJF may have the lowest averages, but only priority scheduling keeps the emergency task’s wait at zero.</div></div>`}
+function cpuBind(){$('#al').onchange=e=>{alg=e.target.value;render()};$('#ag').onchange=e=>{aging=e.target.checked;render()};$('#qn').onchange=e=>{Q=Math.max(1,+e.target.value||2);render()}}
+/* ---------- Producer-Consumer ---------- */
+let pc,auto=null;const PR=['Lab analyzer','Scanner','Triage nurse'],CN=['Doctor dashboard','DB writer'];
+function pcReset(){clearInterval(auto);auto=null;pc={N:5,buf:[],bp:[],bc:[],n:0,log:['Buffer ready: empty = N, full = 0, mutex = 1']}}
+const L=m=>{pc.log.unshift(m)};
+function ins(rec,who){pc.buf.push(rec);L(`${who}: wait(empty), wait(mutex), insert ${rec}, signal(mutex), signal(full)`);if(pc.bc.length){const c=pc.bc.shift();L(`${c} is woken by signal(full)`);take(c)}}
+function take(c){if(!pc.buf.length){pc.bc.push(c);L(`${c}: wait(full) blocks, buffer is empty`);return}const r=pc.buf.shift();L(`${c}: wait(full), wait(mutex), remove ${r}, signal(mutex), signal(empty)`);if(pc.bp.length){const p=pc.bp.shift();L(`${p.who} is woken by signal(empty)`);ins(p.rec,p.who)}}
+function produce(w){const rec='R'+(++pc.n);if(pc.buf.length>=pc.N){pc.bp.push({who:w,rec});L(`${w}: wait(empty) blocks, buffer is full (${rec} waits)`)}else ins(rec,w)}
+function pcAct(t,i){if(t=='p')produce(PR[i]);else take(CN[i]);render()}
+function pcAuto(){if(auto){clearInterval(auto);auto=null}else auto=setInterval(()=>{Math.random()<.5?produce(PR[Math.random()*3|0]):take(CN[Math.random()*2|0]);if(tab!='pc'){clearInterval(auto);auto=null}else render()},800);render()}
+function prodcons(){
+ const e=pc.N-pc.buf.length,f=pc.buf.length;
+ return`<div class="card"><h2>Producer–Consumer (bounded buffer)</h2><p class="s">Lab analyzers, scanners and triage nurses produce records. Doctor dashboards and the database writer consume them.</p>
+ <div class="row"><label>Buffer size N <input type="number" id="nn" min="2" max="8" value="${pc.N}"></label><button class="b g" onclick="pcReset();render()">Reset</button><button class="b g" onclick="pcAuto()">${auto?'Stop auto-run':'Auto-run'}</button></div>
+ <div class="row">${PR.map((n,i)=>`<button class="b" onclick="pcAct('p',${i})">Produce: ${n}</button>`).join('')}</div>
+ <div class="row">${CN.map((n,i)=>`<button class="b g" onclick="pcAct('c',${i})">Consume: ${n}</button>`).join('')}</div>
+ <div class="slots">${Array.from({length:pc.N},(_,i)=>`<div class="slot ${pc.buf[i]?'f':''}">${pc.buf[i]||'free'}</div>`).join('')}</div>
+ <p><b>empty</b> = ${e} · <b>full</b> = ${f} · <b>mutex</b> = 1 · empty + full = ${e+f} (always N)</p>
+ <p class="s">Blocked producers: ${pc.bp.map(p=>p.who).join(', ')||'none'} · Blocked consumers: ${pc.bc.join(', ')||'none'}</p>
+ <div class="log">${pc.log.slice(0,12).map(x=>'<div>'+x+'</div>').join('')}</div></div>`}
+function pcBind(){$('#nn').onchange=e=>{const n=Math.min(8,Math.max(2,+e.target.value||5));pcReset();pc.N=n;render()}}
+/* ---------- Banker's ---------- */
+const A0=[[0,1,0],[2,0,0],[3,0,2],[2,1,1],[0,0,2]],MX=[[7,5,3],[3,2,2],[9,0,2],[2,2,2],[4,3,3]];
+let AL,AV,BL,BM;
+function bReset(){AL=A0.map(r=>[...r]);AV=[3,3,2];BL=['Initial state: Available = (3, 3, 2)'];BM=''}
+const need=i=>MX[i].map((m,k)=>m-AL[i][k]);
+function safety(al,av){const w=[...av],f=Array(5).fill(0),seq=[];let go=true;while(go){go=false;for(let i=0;i<5;i++)if(!f[i]&&MX[i].every((m,k)=>m-al[i][k]<=w[k])){al[i].forEach((a,k)=>w[k]+=a);f[i]=1;seq.push(i);go=true}}return f.every(x=>x)?seq:null}
+const fmt=v=>'('+v.join(', ')+')';
+function bReq(){
+ const i=+$('#bp').value,r=[0,1,2].map(k=>+$('#r'+k).value||0),nd=need(i);
+ let m;
+ if(r.some((x,k)=>x>nd[k]))m=`<span class="bad">Rejected.</span> P${i} asked for ${fmt(r)}, more than its remaining Need ${fmt(nd)}.`;
+ else if(r.some((x,k)=>x>AV[k]))m=`<span class="bad">P${i} waits.</span> ${fmt(r)} is more than Available ${fmt(AV)}.`;
+ else{const al=AL.map(x=>[...x]);al[i]=al[i].map((a,k)=>a+r[k]);const av=AV.map((a,k)=>a-r[k]),s=safety(al,av);
+  if(s){AL=al;AV=av;m=`<span class="ok">Granted.</span> Available is now ${fmt(av)}. Safe sequence: ${s.map(x=>'P'+x).join(' → ')}.`}
+  else m=`<span class="bad">Denied, unsafe.</span> Available would become ${fmt(av)} and no safe sequence exists. P${i} waits.`}
+ BL.unshift(`P${i} requests ${fmt(r)}: `+m);BM=m;render()}
+function bank(){
+ const s=safety(AL.map(x=>[...x]),AV);
+ return`<div class="card sc"><h2>Banker’s algorithm (deadlock avoidance)</h2><p class="s">A = imaging units (10), B = printers (5), C = database connections (7). A request is granted only if the system stays safe.</p>
+ <table><tr><th>Process</th><th>Allocation</th><th>Max</th><th>Need</th></tr>${P.map(p=>`<tr><td>${pill(p.id)}</td><td>${fmt(AL[p.id])}</td><td>${fmt(MX[p.id])}</td><td>${fmt(need(p.id))}</td></tr>`).join('')}</table>
+ <p><b>Available</b> ${fmt(AV)} · State: ${s?`<span class="ok">safe</span>, sequence ${s.map(x=>'P'+x).join(' → ')}`:'<span class="bad">unsafe</span>'}</p>
+ <div class="row"><select id="bp" aria-label="Process">${P.map(p=>`<option value="${p.id}">P${p.id}</option>`).join('')}</select>
+ ${['A','B','C'].map((l,k)=>`<label>${l} <input type="number" id="r${k}" min="0" max="10" value="${[1,0,2][k]}"></label>`).join('')}
+ <button class="b" onclick="bReq()">Request</button><button class="b g" onclick="bReset();render()">Reset</button></div>
+ <p class="s">Try the report’s tests: P1 asks (1, 0, 2), then P0 asks (0, 2, 0), then P1 asks (5, 0, 0).</p>
+ ${BM?`<div class="msg">${BM}</div>`:''}<div class="log">${BL.slice(0,8).map(x=>'<div>'+x+'</div>').join('')}</div></div>`}
+/* ---------- Memory ---------- */
+let REF=['1,2,3,2,1,4,2,5,1,2,3,4','1,2,3,1,4,2,5,1,2,6,3,1,2','2,3,2,1,5,2,4,5,3,2,5,2','3,1,2,3,4,1,5,3,2,1,4,3','1,2,3,4,1,2,5,1,2,3,4,5'];
+let mp=2,ma='FIFO',mf=null;
+function frames(){const w=P.map(p=>Math.max(1,6-p.pr)),s=w.reduce((a,b)=>a+b,0),f=w.map(x=>Math.max(2,Math.floor(16*x/s)));let d=16-f.reduce((a,b)=>a+b,0);while(d){const i=d>0?w.indexOf(Math.max(...w)):f.indexOf(Math.max(...f));f[i]+=d>0?1:-1;d+=d>0?-1:1}return f}
+function paging(ref,nf,a){let fr=[],ptr=0,last={},st=[],fl=0;
+ ref.forEach((pg,i)=>{const hit=fr.includes(pg);
+  if(!hit){fl++;if(fr.length<nf)fr.push(pg);else{let k=0;
+   if(a=='FIFO'){k=ptr;ptr=(ptr+1)%nf}
+   else if(a=='LRU'){fr.forEach((x,j)=>{if(last[x]<last[fr[k]])k=j})}
+   else{let far=-1;fr.forEach((x,j)=>{let nx=ref.indexOf(x,i+1);if(nx<0)nx=1e9;if(nx>far){far=nx;k=j}})}
+   fr[k]=pg}}
+  last[pg]=i;st.push({pg,fr:[...fr],hit})});
+ return{st,fl}}
+const parse=s=>s.split(/[\s,]+/).filter(Boolean).map(Number).filter(x=>!isNaN(x));
+function mem(){
+ const F=frames(),nf=mf||F[mp],ref=parse(REF[mp]),r=paging(ref,nf,ma);
+ const cmp=['FIFO','LRU','Optimal'].map(a=>{const x=paging(ref,nf,a);return`<tr><td>${a}</td><td>${x.fl}</td><td>${(100*(1-x.fl/ref.length)).toFixed(1)}%</td></tr>`}).join('');
+ return`<div class="card"><h2>Memory management (paging)</h2><p class="s">16 frames are shared by weight (6 − priority), with at least 2 per process: ${P.map(p=>`P${p.id} = ${F[p.id]}`).join(', ')}.</p>
+ <div class="row"><select id="mp" aria-label="Process">${P.map(p=>`<option value="${p.id}" ${p.id==mp?'selected':''}>P${p.id} ${p.name}</option>`).join('')}</select>
+ <select id="ma" aria-label="Policy">${['FIFO','LRU','Optimal'].map(a=>`<option ${a==ma?'selected':''}>${a}</option>`).join('')}</select>
+ <label>Frames <input type="number" id="mf" min="1" max="8" value="${nf}"></label></div>
+ <div class="row"><label>Reference string <input id="rs" size="34" value="${REF[mp]}"></label></div>
+ <div class="sc"><table><tr><th>Ref</th>${r.st.map(s=>`<td>${s.pg}</td>`).join('')}</tr>
+ ${Array.from({length:nf},(_,k)=>`<tr><th>F${k+1}</th>${r.st.map(s=>`<td>${s.fr[k]??'·'}</td>`).join('')}</tr>`).join('')}
+ <tr><th>Result</th>${r.st.map(s=>`<td class="${s.hit?'hit':'flt'}">${s.hit?'hit':'fault'}</td>`).join('')}</tr></table></div>
+ <p><b>${ma}</b>: ${r.fl} faults, hit ratio ${(100*(1-r.fl/ref.length)).toFixed(1)}%</p></div>
+ <div class="card sc"><h2>Policy comparison for P${mp} (${nf} frames)</h2><table><tr><th>Policy</th><th>Page faults</th><th>Hit ratio</th></tr>${cmp}</table><div class="msg">Optimal is the lower bound. LRU is the best practical policy.</div></div>`}
+function memBind(){$('#mp').onchange=e=>{mp=+e.target.value;mf=null;render()};$('#ma').onchange=e=>{ma=e.target.value;render()};$('#mf').onchange=e=>{mf=Math.max(1,+e.target.value||1);render()};$('#rs').onchange=e=>{REF[mp]=e.target.value;render()}}
+/* ---------- Integrated ---------- */
+function integ(){
+ const s=sim('pri',aging,Q),sf=safety(AL.map(x=>[...x]),AV),F=frames();
+ return`<div class="card sc"><h2>Integrated view</h2><p class="s">One process table feeds every module. CPU uses priority scheduling${aging?' with aging':''}; memory uses LRU.</p>
+ <table><tr><th>Process</th><th>Priority</th><th>CPU waiting</th><th>Banker’s Need</th><th>Safe-sequence position</th><th>Frames</th><th>Page faults (LRU)</th></tr>
+ ${P.map(p=>`<tr><td>${pill(p.id)} ${p.name}</td><td>${p.pr}</td><td>${s.res[p.id].wt}</td><td>${fmt(need(p.id))}</td><td>${sf?sf.indexOf(p.id)+1:'unsafe'}</td><td>${F[p.id]}</td><td>${paging(parse(REF[p.id]),F[p.id],'LRU').fl}</td></tr>`).join('')}</table></div>
+ <div class="grid">${[['1. Memory','P1 gets the largest frame share, so it takes few page faults.'],['2. CPU scheduling','P1 preempts routine tasks and runs at once.'],['3. Banker’s algorithm','P1’s requests for imaging units or database connections are granted only if the system stays safe.'],['4. Producer–Consumer','Triage output goes into the bounded buffer. Doctor dashboards and the database writer consume it.']].map(a=>`<div class="card"><h2>${a[0]}</h2><p style="margin:0">${a[1]}</p></div>`).join('')}</div>`}
+/* ---------- app ---------- */
+const TABS=[['cpu','CPU scheduling'],['pc','Producer–Consumer'],['bank','Banker’s'],['mem','Memory paging'],['int','Integrated']];
+function render(){
+ $('#tabs').innerHTML=TABS.map(t=>`<button class="${t[0]==tab?'on':''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('');
+ $('#view').innerHTML={cpu,pc:prodcons,bank,mem,int:integ}[tab]();
+ ({cpu:cpuBind,pc:pcBind,mem:memBind}[tab]||(()=>{}))();
+}
+pcReset();bReset();drawPT();render();
+</script></body></html>
